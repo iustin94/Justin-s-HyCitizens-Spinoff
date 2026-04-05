@@ -6,6 +6,7 @@ import com.electro.hycitizens.components.CitizenNametagComponent;
 import com.electro.hycitizens.interactions.PlayerInteractionHandler;
 import com.electro.hycitizens.listeners.*;
 import com.electro.hycitizens.managers.CitizensManager;
+import com.electro.hycitizens.managers.TemplateManager;
 import com.electro.hycitizens.models.CitizenData;
 import com.electro.hycitizens.ui.CitizensUI;
 import com.electro.hycitizens.ui.SkinCustomizerUI;
@@ -32,6 +33,7 @@ import java.util.concurrent.TimeUnit;
 public class HyCitizensPlugin extends JavaPlugin {
     private static HyCitizensPlugin instance;
     private ConfigManager configManager;
+    private TemplateManager templateManager;
     private CitizensManager citizensManager;
     private CitizensUI citizensUI;
     private SkinCustomizerUI skinCustomizerUI;
@@ -52,8 +54,10 @@ public class HyCitizensPlugin extends JavaPlugin {
 
     @Override
     protected void setup() {
-        // Initialize config manager
-        this.configManager = new ConfigManager(Paths.get("mods", "HyCitizensData"));
+        // Initialize config and template managers
+        Path dataFolder = Paths.get("mods", "HyCitizensData");
+        this.configManager = new ConfigManager(dataFolder);
+        this.templateManager = new TemplateManager(dataFolder);
 
         this.generatedRolesPath = Paths.get("mods", "HyCitizensRoles", "Server", "NPC", "Roles");
 
@@ -93,6 +97,26 @@ public class HyCitizensPlugin extends JavaPlugin {
         HytaleServer.SCHEDULED_EXECUTOR.schedule(() -> {
             citizensManager.getRoleGenerator().regenerateAllRoles(citizensManager.getAllCitizens());
         }, 250, TimeUnit.MILLISECONDS);
+
+        // Register dashboard schema provider (if the admin dashboard plugin is loaded)
+        try {
+            dev.hytalemodding.api.DashboardRegistry.register(
+                    new com.electro.hycitizens.api.CitizenSchemaProvider(this)
+            );
+        } catch (NoClassDefFoundError ignored) {
+            // Admin dashboard plugin not present — skip registration
+        }
+
+        // Register NPC role manager so other plugins can trigger role regeneration
+        try {
+            dev.hytalemodding.api.ServiceRegistry.register(
+                    dev.hytalemodding.api.services.NpcRoleManager.class,
+                    (dev.hytalemodding.api.services.NpcRoleManager) (roleName, worldId) ->
+                            citizensManager.regenerateAndRespawnByRole(roleName, worldId)
+            );
+        } catch (NoClassDefFoundError ignored) {
+            // Admin dashboard plugin not present — skip registration
+        }
     }
 
     @Override
@@ -131,6 +155,10 @@ public class HyCitizensPlugin extends JavaPlugin {
 
     public CitizensManager getCitizensManager() {
         return citizensManager;
+    }
+
+    public TemplateManager getTemplateManager() {
+        return templateManager;
     }
 
     public CitizensUI getCitizensUI() {

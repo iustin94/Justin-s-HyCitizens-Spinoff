@@ -3072,6 +3072,28 @@ public class CitizensManager {
         return new ArrayList<>(citizens.values());
     }
 
+    /**
+     * Force regenerate the role for all citizens matching the given role name,
+     * then respawn them. Called by other plugins via ServiceRegistry → NpcRoleManager.
+     */
+    public void regenerateAndRespawnByRole(@javax.annotation.Nonnull String npcRoleName, @javax.annotation.Nonnull String worldId) {
+        for (CitizenData citizen : citizens.values()) {
+            // Match by base role name OR by citizen ID embedded in the role name
+            String citizenBaseRole = roleGenerator.getRoleName(citizen);
+            boolean matches = npcRoleName.equals(citizenBaseRole)
+                    || npcRoleName.contains(citizen.getId());
+            if (!matches) continue;
+
+            getLogger().atInfo().log("[HyCitizens] Regenerating role for citizen " + citizen.getId() + " (matched " + npcRoleName + ")");
+            roleGenerator.forceRoleGeneration(citizen);
+
+            if (citizen.getNpcRef() != null && citizen.getNpcRef().isValid()) {
+                despawnCitizenNPC(citizen);
+                spawnCitizenNPC(citizen, false);
+            }
+        }
+    }
+
     public int getCitizenCount() {
         return citizens.size();
     }

@@ -174,22 +174,34 @@ public class RoleGenerator {
         boolean isIdle = "IDLE".equals(moveType);
         boolean isPatrol = "PATROL".equals(moveType);
         boolean isFollowCitizen = "FOLLOW_CITIZEN".equals(moveType);
+        JsonObject role;
         if (isIdle) {
-            return generateIdleRole(citizen);
+            role = generateIdleRole(citizen);
         } else if (isPatrol) {
-            return generatePatrolRole(citizen);
+            role = generatePatrolRole(citizen);
         } else if (isFollowCitizen) {
-            return generateSeekRole(citizen, citizen.getMovementBehavior().getWalkSpeed(), 0.05f,
+            role = generateSeekRole(citizen, citizen.getMovementBehavior().getWalkSpeed(), 0.05f,
                     Math.max(0.6f, Math.min(1.4f, citizen.getFollowDistance() + 0.35f)));
         } else {
-            return generateVariantRole(citizen);
+            role = generateVariantRole(citizen);
         }
+
+        // Inject InteractionInstruction if citizen has F-key actions or is a quest giver
+        String roleName = getRoleName(citizen);
+        String questObjectiveId = getQuestGiverObjectiveId(roleName);
+        boolean hasFKey = HyCitizensPlugin.get().getCitizensManager().hasFKeyActions(citizen);
+        if (hasFKey || questObjectiveId != null) {
+            role.add("InteractionInstruction", buildInteractionInstruction(hasFKey, questObjectiveId));
+        }
+
+        return role;
     }
 
     @Nonnull
     public String getFallbackRoleName(@Nonnull CitizenData citizen) {
         String moveType = citizen.getMovementBehavior().getType();
-        boolean interactable = HyCitizensPlugin.get().getCitizensManager().hasFKeyActions(citizen);
+        boolean interactable = HyCitizensPlugin.get().getCitizensManager().hasFKeyActions(citizen)
+                || getQuestGiverObjectiveId(getRoleName(citizen)) != null;
         String attitude = citizen.getAttitude();
         boolean isWander = "WANDER".equals(moveType) || "WANDER_CIRCLE".equals(moveType) || "WANDER_RECT".equals(moveType);
 
@@ -354,10 +366,6 @@ public class RoleGenerator {
         role.addProperty("Type", "Variant");
         role.addProperty("Reference", "Template_Citizen");
 
-//        if (citizen.getFKeyInteractionEnabled()) {
-//            role.add("InteractionInstruction", buildInteractionInstruction());
-//        }
-
         JsonObject modify = new JsonObject();
         modify.addProperty("DefaultPlayerAttitude", mapPlayerAttitude(citizen.getAttitude()));
         modify.addProperty("WanderRadius", citizen.getMovementBehavior().getWanderRadius());
@@ -460,38 +468,69 @@ public class RoleGenerator {
         return role;
     }
 
-//    @Nonnull
-//    private JsonObject buildInteractionInstruction() {
-//        JsonObject interactionInstruction = new JsonObject();
-//        JsonArray instructions = new JsonArray();
-//
-//        JsonObject setInteractable = new JsonObject();
-//        setInteractable.addProperty("Continue", true);
-//        JsonObject anySensor = new JsonObject();
-//        anySensor.addProperty("Type", "Any");
-//        setInteractable.add("Sensor", anySensor);
-//        JsonArray setActions = new JsonArray();
-//        JsonObject setAction = new JsonObject();
-//        setAction.addProperty("Type", "SetInteractable");
-//        setAction.addProperty("Interactable", true);
-//        setActions.add(setAction);
-//        setInteractable.add("Actions", setActions);
-//        instructions.add(setInteractable);
-//
-//        JsonObject hasInteracted = new JsonObject();
-//        JsonObject hasInteractedSensor = new JsonObject();
-//        hasInteractedSensor.addProperty("Type", "HasInteracted");
-//        hasInteracted.add("Sensor", hasInteractedSensor);
-//        JsonArray interactActions = new JsonArray();
-//        JsonObject interactAction = new JsonObject();
-//        interactAction.addProperty("Type", "CitizenInteraction");
-//        interactActions.add(interactAction);
-//        hasInteracted.add("Actions", interactActions);
-//        instructions.add(hasInteracted);
-//
-//        interactionInstruction.add("Instructions", instructions);
-//        return interactionInstruction;
-//    }
+    @Nonnull
+    private JsonObject buildInteractionInstruction(boolean hasFKey, @javax.annotation.Nullable String questObjectiveId) {
+        JsonObject interactionInstruction = new JsonObject();
+        JsonArray instructions = new JsonArray();
+
+        // SetInteractable: true (shows E prompt)
+        JsonObject setInteractable = new JsonObject();
+        setInteractable.addProperty("Continue", true);
+        JsonObject anySensor = new JsonObject();
+        anySensor.addProperty("Type", "Any");
+        setInteractable.add("Sensor", anySensor);
+        JsonArray setActions = new JsonArray();
+        JsonObject setAction = new JsonObject();
+        setAction.addProperty("Type", "SetInteractable");
+        setAction.addProperty("Interactable", true);
+        setActions.add(setAction);
+        setInteractable.add("Actions", setActions);
+        instructions.add(setInteractable);
+
+        // HasInteracted → actions
+        JsonObject hasInteracted = new JsonObject();
+        JsonObject hasInteractedSensor = new JsonObject();
+        hasInteractedSensor.addProperty("Type", "HasInteracted");
+        hasInteracted.add("Sensor", hasInteractedSensor);
+        JsonArray interactActions = new JsonArray();
+
+        // Quest giver: StartObjective (before CitizenInteraction so quest starts first)
+        if (questObjectiveId != null) {
+            JsonObject startObj = new JsonObject();
+            startObj.addProperty("Type", "StartObjective");
+            startObj.addProperty("Objective", questObjectiveId);
+            interactActions.add(startObj);
+        }
+
+        // Normal citizen interaction (F-key menu)
+        if (hasFKey) {
+            JsonObject interactAction = new JsonObject();
+            interactAction.addProperty("Type", "CitizenInteraction");
+            interactActions.add(interactAction);
+        }
+
+        hasInteracted.add("Actions", interactActions);
+        instructions.add(hasInteracted);
+
+        interactionInstruction.add("Instructions", instructions);
+        return interactionInstruction;
+    }
+
+    /**
+     * Queries the ServiceRegistry for a QuestGiverProvider and returns
+     * the objective ID if this role is a quest giver, null otherwise.
+     */
+    @javax.annotation.Nullable
+    private String getQuestGiverObjectiveId(@Nonnull String roleName) {
+        try {
+            var provider = dev.hytalemodding.api.ServiceRegistry.get(
+                    dev.hytalemodding.api.services.QuestGiverProvider.class);
+            if (provider != null) {
+                return provider.getQuestGiverObjectiveId(roleName);
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
 
     @Nonnull
     private JsonObject buildSeekInstruction(float walkSpeed, float stopDistance, float slowDownDistance) {
