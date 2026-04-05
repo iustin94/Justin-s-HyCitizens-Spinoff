@@ -186,12 +186,10 @@ public class RoleGenerator {
             role = generateVariantRole(citizen);
         }
 
-        // Inject InteractionInstruction if citizen has F-key actions or is a quest giver
-        String roleName = getRoleName(citizen);
-        String questObjectiveId = getQuestGiverObjectiveId(roleName);
+        // Inject InteractionInstruction if citizen has F-key actions
         boolean hasFKey = HyCitizensPlugin.get().getCitizensManager().hasFKeyActions(citizen);
-        if (hasFKey || questObjectiveId != null) {
-            role.add("InteractionInstruction", buildInteractionInstruction(hasFKey, questObjectiveId));
+        if (hasFKey) {
+            role.add("InteractionInstruction", buildInteractionInstruction(hasFKey, null));
         }
 
         return role;
@@ -200,8 +198,7 @@ public class RoleGenerator {
     @Nonnull
     public String getFallbackRoleName(@Nonnull CitizenData citizen) {
         String moveType = citizen.getMovementBehavior().getType();
-        boolean interactable = HyCitizensPlugin.get().getCitizensManager().hasFKeyActions(citizen)
-                || getQuestGiverObjectiveId(getRoleName(citizen)) != null;
+        boolean interactable = HyCitizensPlugin.get().getCitizensManager().hasFKeyActions(citizen);
         String attitude = citizen.getAttitude();
         boolean isWander = "WANDER".equals(moveType) || "WANDER_CIRCLE".equals(moveType) || "WANDER_RECT".equals(moveType);
 
@@ -516,21 +513,6 @@ public class RoleGenerator {
         return interactionInstruction;
     }
 
-    /**
-     * Queries the ServiceRegistry for a QuestGiverProvider and returns
-     * the objective ID if this role is a quest giver, null otherwise.
-     */
-    @javax.annotation.Nullable
-    private String getQuestGiverObjectiveId(@Nonnull String roleName) {
-        try {
-            var provider = dev.hytalemodding.api.ServiceRegistry.get(
-                    dev.hytalemodding.api.services.QuestGiverProvider.class);
-            if (provider != null) {
-                return provider.getQuestGiverObjectiveId(roleName);
-            }
-        } catch (Exception ignored) {}
-        return null;
-    }
 
     @Nonnull
     private JsonObject buildSeekInstruction(float walkSpeed, float stopDistance, float slowDownDistance) {

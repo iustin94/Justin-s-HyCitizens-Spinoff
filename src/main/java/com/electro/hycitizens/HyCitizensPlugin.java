@@ -107,16 +107,6 @@ public class HyCitizensPlugin extends JavaPlugin {
             // Admin dashboard plugin not present — skip registration
         }
 
-        // Register NPC role manager so other plugins can trigger role regeneration
-        try {
-            dev.hytalemodding.api.ServiceRegistry.register(
-                    dev.hytalemodding.api.services.NpcRoleManager.class,
-                    (dev.hytalemodding.api.services.NpcRoleManager) (roleName, worldId) ->
-                            citizensManager.regenerateAndRespawnByRole(roleName, worldId)
-            );
-        } catch (NoClassDefFoundError ignored) {
-            // Admin dashboard plugin not present — skip registration
-        }
     }
 
     @Override
